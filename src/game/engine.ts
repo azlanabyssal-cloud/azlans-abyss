@@ -15,6 +15,8 @@ const FLOW_BURST_COMBO  = 15
 const FLOW_BURST_DUR    = 4.0
 const INTRO_DUR         = 1.6   // seconds for cinematic intro
 const JUMP_CUT_VELOCITY = 420   // px/s — max upward speed on early hold release (≈8 u/s)
+const COMBO_WINDOW      = 3.0   // seconds idle before combo chain resets
+const COMBO_DECAY_RATE  = 0.08  // combo points lost per second during idle window
 
 export type EngineEvent = 'crash' | 'perfectLanding' | 'flip' | 'archHit' | 'wellHit' | 'flowBurst'
 
@@ -54,6 +56,7 @@ export class GameEngine {
   private _sandTimer    = 0   // throttle sand spray emission
   private _wasHeld      = false  // previous frame hold state — jump cut detection
   private _wind         = 0     // -1→+1 wind factor, slow cycle, biases sand spray
+  private _comboTimer   = 0     // countdown before idle combo chain resets
 
   // Game state
   combo        = 0
@@ -126,6 +129,7 @@ export class GameEngine {
     this._jumpCooldown  = 0
     this._sandTimer     = 0
     this._wasHeld       = false
+    this._comboTimer    = 0
     this.colorSystem.level    = 0
     this.colorSystem.target   = 0
     this.colorSystem.velocity = 0
@@ -231,6 +235,7 @@ export class GameEngine {
     // Flip
     if (result.completedFlip && result.flipsCompleted > 0) {
       this.combo += result.flipsCompleted
+      this._comboTimer = COMBO_WINDOW   // refresh chain window on every trick
       this.audio.playChime(this.combo)
       this.onEvent?.('flip')
       this.particles.emit(
@@ -251,12 +256,23 @@ export class GameEngine {
         this.player.worldX, this.player.worldY,
         this.colorSystem.palette.trailColor, 24, 220
       )
+      this._comboTimer = COMBO_WINDOW   // full window on perfect land
       this._shake(6)
     } else if (result.justLanded) {
       // Normal landing — soft thud + light shake
       this.audio.playLand()
       this._shake(2.5)
-      this.combo = 0
+      // Give 1.5s to re-jump and chain — feels forgiving without being free
+      if (this.combo > 0) this._comboTimer = Math.min(this._comboTimer, 1.5)
+    }
+
+    // Combo window decay — chain resets after idle; normal landing shortens window
+    if (this._comboTimer > 0) {
+      this._comboTimer -= dt
+      if (this._comboTimer <= 0 && this.combo > 0) {
+        this.combo = 0
+        this._comboTimer = 0
+      }
     }
 
     // Flow Burst
@@ -285,9 +301,12 @@ export class GameEngine {
     this._wind = Math.sin(this.gameTime * 0.07) * 0.65
 
     // Spawn mechanics + coins
+    // High combo tightens mechanic spacing — flow state earns harder challenges
+    const mechDensity = this.combo >= 3 ? 0.88 : 1.0
     this.mechanics.spawn(
       this.cameraX, this.W,
-      (wx) => this.terrain.getY(wx, this.colorSystem.level)
+      (wx) => this.terrain.getY(wx, this.colorSystem.level),
+      mechDensity,
     )
     this.coins.spawn(
       this.cameraX, this.W,
@@ -310,8 +329,8 @@ export class GameEngine {
       this.player, dt, this.particles,
       this.colorSystem.palette.archColor,
       this.colorSystem.palette.wellColor,
-      () => { this.combo += 2; this.audio.playChime(this.combo); this.onEvent?.('archHit') },
-      () => { this.combo += 1; this.onEvent?.('wellHit') },
+      () => { this.combo += 2; this._comboTimer = COMBO_WINDOW; this.audio.playChime(this.combo); this.onEvent?.('archHit') },
+      () => { this.combo += 1; this._comboTimer = COMBO_WINDOW; this.onEvent?.('wellHit') },
     )
 
     this.particles.update(dt)
@@ -329,6 +348,12 @@ export class GameEngine {
         this._wind,
       )
     }
+
+    // Track marks — record ground deformation + age existing marks
+    this.renderer.updateTrackMarks(
+      this.player.worldX, this.player.worldY,
+      this.player.vx, this.player.isGrounded, dt
+    )
 
     // Jump ring decay
     if (this.jumpRingTimer > 0) this.jumpRingTimer = Math.max(0, this.jumpRingTimer - dt)

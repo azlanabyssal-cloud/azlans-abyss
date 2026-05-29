@@ -17,12 +17,12 @@ export class MechanicsManager {
   private lastWellX = 800
   private lastWallX = 1200
 
-  spawn(cameraX: number, canvasW: number, terrainGetY: (x: number) => number) {
+  spawn(cameraX: number, canvasW: number, terrainGetY: (x: number) => number, densityScale = 1.0) {
     const leadEdge = cameraX + canvasW + 400
 
-    // Spawn arches ahead of view
+    // Spawn arches ahead of view (tighter spacing at high combo)
     while (this.lastArchX < leadEdge) {
-      this.lastArchX += ARCH_INTERVAL + Math.random() * 300
+      this.lastArchX += (ARCH_INTERVAL + Math.random() * 300) * densityScale
       const ty = terrainGetY(this.lastArchX)
       this.arches.push({
         worldX: this.lastArchX,

@@ -13,7 +13,36 @@ export class Renderer {
   private _squashTimer       = 0   // landing squash, 1.0 → 0
   private _launchSquashTimer = 0   // launch squash, 1.0 → 0
 
+  // Track marks — persistent sand deformation while grounded
+  private _trackMarks: Array<{ x: number; y: number; age: number; speed: number }> = []
+  private _lastTrackX = -Infinity
+
   resize(w: number, h: number) { this.W = w; this.H = h }
+
+  // Called from engine every physics step — ages existing marks, adds new ones when grounded
+  updateTrackMarks(x: number, y: number, speed: number, isGrounded: boolean, dt: number) {
+    const TRACK_MAX_AGE   = 8.0    // seconds before mark fully fades
+    const TRACK_SPACING   = 5.2    // px between samples (≈0.10 game units)
+    const TRACK_MAX_COUNT = 120
+
+    // Age all existing marks
+    for (const m of this._trackMarks) m.age += dt
+
+    // Prune fully faded marks
+    while (this._trackMarks.length > 0 && this._trackMarks[this._trackMarks.length - 1].age > TRACK_MAX_AGE) {
+      this._trackMarks.pop()
+    }
+
+    // Add new mark if grounded and far enough from last sample
+    if (isGrounded && x - this._lastTrackX > TRACK_SPACING) {
+      this._trackMarks.unshift({ x, y, age: 0, speed })
+      this._lastTrackX = x
+      if (this._trackMarks.length > TRACK_MAX_COUNT) this._trackMarks.length = TRACK_MAX_COUNT
+    } else if (!isGrounded) {
+      // Reset spacing tracker on landing so first grounded sample is always placed
+      this._lastTrackX = -Infinity
+    }
+  }
 
   draw(
     ctx: CanvasRenderingContext2D,
@@ -336,6 +365,31 @@ export class Renderer {
     fillGrd.addColorStop(1.0,  rgb(palette.terrainFill, 0.55))
     ctx.fillStyle = fillGrd
     ctx.fill()
+
+    // Track marks — persistent deformation lines from previous ground contact
+    if (this._trackMarks.length > 1) {
+      const TRACK_MAX_AGE = 8.0
+      ctx.save()
+      ctx.lineCap = 'round'
+      for (let i = 1; i < this._trackMarks.length; i++) {
+        const a = this._trackMarks[i - 1]
+        const b = this._trackMarks[i]
+        const alpha = Math.pow(1 - a.age / TRACK_MAX_AGE, 0.5) * 0.38
+        if (alpha < 0.02) continue
+        const sx0 = a.x - cameraX, sy0 = a.y - cameraY
+        const sx1 = b.x - cameraX, sy1 = b.y - cameraY
+        if (sx0 < -40 && sx1 < -40) continue
+        if (sx0 > this.W + 40 && sx1 > this.W + 40) continue
+        const spd = Math.min(Math.max(a.speed - 180, 0) / 720, 1)
+        ctx.lineWidth   = 2.6 + spd * 2.0
+        ctx.strokeStyle = rgb(palette.terrainFill, alpha)
+        ctx.beginPath()
+        ctx.moveTo(sx0, sy0)
+        ctx.lineTo(sx1, sy1)
+        ctx.stroke()
+      }
+      ctx.restore()
+    }
 
     // Dune shading — slip face darker, windward face slightly lighter
     // Samples every 3rd point (12px) for a fast slope-tinted overlay

@@ -14,6 +14,7 @@ const ANGULAR_TORQUE     = 9.2     // rad/s² flip acceleration
 const MAX_ANGULAR_VEL    = 9.5     // rad/s — 540°/s, 1 flip ≈ 0.66s
 const TRICK_MIN_AIR_FR   = 12      // frames (200ms) before flip rotation starts
 const AIR_DRAG           = 0.9997
+const AIR_SLOPE_DRIFT    = 7.8     // px/s² — airborne speed bias from terrain slope angle (upslope boosts, downslope costs)
 const APEX_THRESHOLD     = 130     // px/s — |vy| within this = apex zone (≈2.5 u/s)
 const APEX_GRAVITY_MULT  = 0.18    // gravity fraction at dead apex — the float trick
 const LANDING_PERFECT    = 0.21    // rad — 12°, tight window for perfect
@@ -112,6 +113,8 @@ export function stepPhysics(
     const gravMult  = baseMult + (APEX_GRAVITY_MULT - baseMult) * apexBlend
     player.vy += GRAVITY * gravMult * dt
     player.vx *= Math.pow(AIR_DRAG, dt * 60)
+    // Slope drift — upslope launch gives tiny air boost, downslope gives tiny brake
+    player.vx -= Math.sin(slope) * AIR_SLOPE_DRIFT * dt
     player.worldX += player.vx * dt
     player.worldY += player.vy * dt
 
