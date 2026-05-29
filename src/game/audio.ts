@@ -15,6 +15,9 @@ export class AudioEngine {
   private ambOsc2:      OscillatorNode | null = null
   private ambGain:      GainNode       | null = null
   private initialized = false
+  private slideGain:  GainNode              | null = null
+  private slideSrc:   AudioBufferSourceNode | null = null
+  private slideFilt:  BiquadFilterNode      | null = null
 
   init() {
     if (this.initialized) return
@@ -40,6 +43,7 @@ export class AudioEngine {
 
     this._startDrone()
     this._startAmbient()
+    this._startSlide()
   }
 
   // ─── helpers ────────────────────────────────────────────────────────────
@@ -153,6 +157,30 @@ export class AudioEngine {
     this.ambOsc2.start()
   }
 
+  private _startSlide() {
+    if (!this.ctx) return
+    const sr   = this.ctx.sampleRate
+    const buf  = this.ctx.createBuffer(1, sr, sr)   // 1-second looped noise
+    const data = buf.getChannelData(0)
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1
+
+    this.slideSrc  = this.ctx.createBufferSource()
+    this.slideFilt = this.ctx.createBiquadFilter()
+    this.slideGain = this.ctx.createGain()
+
+    this.slideSrc.buffer           = buf
+    this.slideSrc.loop             = true
+    this.slideFilt.type            = 'bandpass'
+    this.slideFilt.frequency.value = 900
+    this.slideFilt.Q.value         = 1.0
+    this.slideGain.gain.value      = 0.0
+
+    this.slideSrc.connect(this.slideFilt)
+    this.slideFilt.connect(this.slideGain)
+    this.slideGain.connect(this._out())
+    this.slideSrc.start()
+  }
+
   // ─── gameplay sounds ────────────────────────────────────────────────────
 
   // Jump — quick ascending whoosh, the whole satisfying feel of the tap
@@ -234,6 +262,16 @@ export class AudioEngine {
 
     // Drone deepens slightly at higher levels
     this.droneOsc?.frequency.linearRampToValueAtTime(55 * (1 + colorLevel * 0.04), t + 0.6)
+  }
+
+  // Speed-mapped slide hiss — pitch 900→2500Hz, volume scales with ground speed
+  updateSlide(isGrounded: boolean, speed: number) {
+    if (!this.ctx || !this.slideGain || !this.slideFilt) return
+    const t   = this.ctx.currentTime
+    const spd = Math.max(0, Math.min((speed - 180) / 720, 1.0))
+    const vol = isGrounded ? spd * 0.028 : 0.0
+    this.slideGain.gain.linearRampToValueAtTime(vol, t + 0.05)
+    this.slideFilt.frequency.linearRampToValueAtTime(900 + spd * 1600, t + 0.05)
   }
 
   // Coin pickup — bright, short, satisfying

@@ -1,4 +1,4 @@
-import type { PlayerState, TrailPoint } from '../types/game'
+import type { PlayerState, TrailPoint, SurfaceType } from '../types/game'
 import type { Terrain } from './terrain'
 
 // Feel over realism — tuned by hand until it clicked
@@ -14,7 +14,6 @@ const ANGULAR_TORQUE     = 9.2     // rad/s² flip acceleration
 const MAX_ANGULAR_VEL    = 9.5     // rad/s — 540°/s, 1 flip ≈ 0.66s
 const TRICK_MIN_AIR_FR   = 12      // frames (200ms) before flip rotation starts
 const AIR_DRAG           = 0.9997
-const GROUND_DRAG        = 0.992
 const LANDING_PERFECT    = 0.21    // rad — 12°, tight window for perfect
 const LANDING_SAFE       = 0.77    // rad — 44°, beyond this is a crash
 const TRAIL_MAX          = 80
@@ -40,6 +39,8 @@ export interface PhysicsResult {
   justLanded: boolean
   completedFlip: boolean
   flipsCompleted: number
+  surfaceType: SurfaceType
+  slopeAngle:  number
 }
 
 export function stepPhysics(
@@ -54,6 +55,7 @@ export function stepPhysics(
   let justLanded = false
   let completedFlip = false
   let flipsCompleted = 0
+  let surfaceType: SurfaceType = 'flat'
 
   const terrainY = terrain.getY(player.worldX, colorLevel)
   const slope    = terrain.getSlope(player.worldX, colorLevel)
@@ -69,7 +71,16 @@ export function stepPhysics(
     // slope drives speed — downhill accelerates, uphill bleeds it
     player.vx += slopeR * SLOPE_FORCE * dt
     player.vx = Math.max(MIN_SPEED, Math.min(MAX_SPEED, player.vx))
-    player.vx *= Math.pow(GROUND_DRAG, dt * 60)
+    // surface-aware drag: slip face loose, windward grips harder, crest floats
+    surfaceType = Math.abs(slopeR) < 0.05 ? 'crest'
+                : slopeR < -0.10          ? 'windward'
+                : slopeR >  0.12          ? 'slip'
+                :                           'flat'
+    const surfDrag = surfaceType === 'windward' ? 0.990
+                   : surfaceType === 'crest'    ? 0.999
+                   : surfaceType === 'slip'     ? 0.995
+                   :                             0.992
+    player.vx *= Math.pow(surfDrag, dt * 60)
 
     // Reset backflip state when grounded
     player.angle = slope
@@ -158,7 +169,7 @@ export function stepPhysics(
   // Update trail
   updateTrail(player, colorLevel)
 
-  return { crashed, perfectLanding, justLanded, completedFlip, flipsCompleted }
+  return { crashed, perfectLanding, justLanded, completedFlip, flipsCompleted, surfaceType, slopeAngle: slope }
 }
 
 export function triggerJump(player: PlayerState) {

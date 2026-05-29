@@ -52,6 +52,7 @@ export class Renderer {
     this._drawSpeedStreaks(ctx, player, palette, colorLevel, cameraX, cameraY, time)
     this._drawJumpRing(ctx, palette, jumpRingTimer, jumpRingX - cameraX, jumpRingY - cameraY)
     this._drawScarf(ctx, player, palette, colorLevel, cameraX, cameraY)
+    this._drawContactShadow(ctx, player, cameraX, cameraY)
     this._drawPlayer(ctx, player, palette, colorLevel, cameraX, cameraY, time, isFlowBurst)
     particles.draw(ctx, cameraX, cameraY)
     this._drawComboPop(ctx, palette, comboPopTimer, comboPopValue, comboPopX - cameraX, comboPopY - cameraY)
@@ -333,6 +334,26 @@ export class Renderer {
     ctx.fillStyle = fillGrd
     ctx.fill()
 
+    // Dune shading — slip face darker, windward face slightly lighter
+    // Samples every 3rd point (12px) for a fast slope-tinted overlay
+    for (let i = 1; i + 2 < points.length; i += 3) {
+      const sr = (points[i + 1][1] - points[i - 1][1]) / (points[i + 1][0] - points[i - 1][0])
+      let sa = 0
+      let dark = true
+      if      (sr >  0.18) { sa = Math.min((sr - 0.18) / 0.48, 1.0) * 0.22; dark = true  }
+      else if (sr < -0.14) { sa = Math.min((-sr - 0.14) / 0.34, 1.0) * 0.09; dark = false }
+      if (sa < 0.015) continue
+      const j  = Math.min(i + 3, points.length - 1)
+      const x0 = points[i][0] - cameraX,  y0 = points[i][1] - cameraY
+      const x1 = points[j][0] - cameraX,  y1 = points[j][1] - cameraY
+      ctx.beginPath()
+      ctx.moveTo(x0, y0);  ctx.lineTo(x1, y1)
+      ctx.lineTo(x1, y1 + 28);  ctx.lineTo(x0, y0 + 28)
+      ctx.closePath()
+      ctx.fillStyle = dark ? `rgba(0,0,0,${sa})` : `rgba(255,255,255,${sa * 0.55})`
+      ctx.fill()
+    }
+
     // Edge path — same smooth curve, drawn 3× for bloom
     ctx.beginPath()
     ctx.moveTo(px0, py0)
@@ -429,6 +450,28 @@ export class Renderer {
       ctx.lineWidth   = (1 - prog) * 2
       ctx.stroke()
     }
+  }
+
+  // ─── contact shadow ─────────────────────────────────────────────────────
+
+  private _drawContactShadow(
+    ctx: CanvasRenderingContext2D,
+    player: PlayerState,
+    cameraX: number,
+    cameraY: number,
+  ) {
+    if (!player.isGrounded) return
+    const sx = player.worldX - cameraX
+    const sy = player.worldY - cameraY
+    ctx.save()
+    ctx.translate(sx, sy + 2)
+    ctx.rotate(player.angle)
+    ctx.scale(1.7, 0.30)
+    ctx.beginPath()
+    ctx.arc(0, 0, 22, 0, Math.PI * 2)
+    ctx.fillStyle = 'rgba(0,0,0,0.26)'
+    ctx.fill()
+    ctx.restore()
   }
 
   // ─── player ─────────────────────────────────────────────────────────────

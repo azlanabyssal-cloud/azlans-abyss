@@ -50,6 +50,8 @@ export class GameEngine {
   private _jumpBuffer   = 0   // queued jump if tapped just before landing (100ms)
   private _jumpCooldown = 0   // brief lockout after jump (80ms)
 
+  private _sandTimer    = 0   // throttle sand spray emission
+
   // Game state
   combo        = 0
   distance     = 0
@@ -112,6 +114,7 @@ export class GameEngine {
     this._coyoteTimer   = 0
     this._jumpBuffer    = 0
     this._jumpCooldown  = 0
+    this._sandTimer     = 0
     this.colorSystem.level    = 0
     this.colorSystem.target   = 0
     this.colorSystem.velocity = 0
@@ -260,6 +263,7 @@ export class GameEngine {
     this.distance = (this.player.worldX - 200) / 8
     this.colorSystem.update(this.combo, this.player.isGrounded, dt)
     this.audio.updateAmbient(this.colorSystem.level)
+    this.audio.updateSlide(this.player.isGrounded, this.player.vx)
 
     // Spawn mechanics + coins
     this.mechanics.spawn(
@@ -292,6 +296,19 @@ export class GameEngine {
     )
 
     this.particles.update(dt)
+
+    // Sand spray — directional kick from fast ground contact
+    this._sandTimer = Math.max(0, this._sandTimer - dt)
+    if (this.player.isGrounded && this.player.vx > 240 && this._sandTimer <= 0) {
+      const interval = Math.max(0.022, 0.07 - (this.player.vx - 240) / 10000)
+      this._sandTimer = interval
+      this.particles.emitSandSplash(
+        this.player.worldX, this.player.worldY,
+        this.colorSystem.palette.trailColor,
+        result.slopeAngle,
+        this.player.vx,
+      )
+    }
 
     // Jump ring decay
     if (this.jumpRingTimer > 0) this.jumpRingTimer = Math.max(0, this.jumpRingTimer - dt)

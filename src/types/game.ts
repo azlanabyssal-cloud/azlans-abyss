@@ -1,4 +1,5 @@
-export type GameState = 'menu' | 'playing' | 'dead'
+export type GameState   = 'menu' | 'playing' | 'dead'
+export type SurfaceType = 'windward' | 'crest' | 'slip' | 'flat'
 
 export interface Vec2 { x: number; y: number }
 

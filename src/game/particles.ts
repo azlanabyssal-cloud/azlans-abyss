@@ -34,6 +34,32 @@ export class ParticleSystem {
     }
   }
 
+  // Directional sand spray from board contact — slope-aligned, speed-scaled
+  emitSandSplash(
+    x: number, y: number,
+    color: [number,number,number],
+    slope: number,
+    speed: number,
+  ) {
+    const intensity = Math.min((speed - 220) / 580, 1.0)
+    if (intensity < 0.05) return
+    const count = intensity > 0.55 ? 2 : 1
+    const pts   = this.get(count)
+    for (const p of pts) {
+      // spray direction: perpendicular to terrain surface, biased backward
+      const ang = slope - Math.PI / 2 + (Math.random() - 0.5) * 0.60
+      const spd = 50 + intensity * 130 + Math.random() * 60
+      p.x  = x + (Math.random() - 0.5) * 14
+      p.y  = y
+      p.vx = Math.cos(ang) * spd - speed * 0.05
+      p.vy = Math.sin(ang) * spd
+      p.life = p.maxLife = 0.10 + Math.random() * 0.18
+      p.size = 1.0 + Math.random() * 1.6 * intensity
+      p.r = color[0]; p.g = color[1]; p.b = color[2]
+      p.active = true
+    }
+  }
+
   // Ring burst on arch thread-through
   emitRing(x: number, y: number, color: [number,number,number], radius: number) {
     const count = 24
