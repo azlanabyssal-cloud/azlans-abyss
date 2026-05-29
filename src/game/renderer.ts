@@ -8,9 +8,10 @@ import { rgb } from './colorSystem'
 export class Renderer {
   private W = 0
   private H = 0
-  private _smoothAngle  = 0
-  private _wasGrounded  = true
-  private _squashTimer  = 0   // 1.0 → 0, decays each frame
+  private _smoothAngle       = 0
+  private _wasGrounded       = true
+  private _squashTimer       = 0   // landing squash, 1.0 → 0
+  private _launchSquashTimer = 0   // launch squash, 1.0 → 0
 
   resize(w: number, h: number) { this.W = w; this.H = h }
 
@@ -42,7 +43,8 @@ export class Renderer {
 
     this._drawSky(ctx, palette, colorLevel, time, isFlowBurst)
     this._drawBirds(ctx, palette, colorLevel, cameraX, time)
-    this._drawParallax(ctx, palette, colorLevel, cameraX, time)
+    const speedNorm = Math.min(Math.max(player.vx - 180, 0) / 720, 1)
+    this._drawParallax(ctx, palette, colorLevel, cameraX, time, speedNorm)
     this._drawTerrain(ctx, terrain, palette, colorLevel, cameraX, cameraY, time)
     this._drawPhaseWalls(ctx, mechanics, palette, cameraX, cameraY, time)
     this._drawWells(ctx, mechanics, palette, cameraX, cameraY, time)
@@ -184,9 +186,10 @@ export class Renderer {
     colorLevel: number,
     cameraX: number,
     time: number,
+    speedNorm = 0,
   ) {
-    // ── Layer 0: distant spires (scroll 0.04) ──
-    const spireOff = -(cameraX * 0.04) % (this.W * 2)
+    // ── Layer 0: distant spires — speed widens depth separation ──
+    const spireOff = -(cameraX * (0.04 + speedNorm * 0.008)) % (this.W * 2)
     const spireAlpha = 0.18 + colorLevel * 0.08
     ctx.fillStyle = rgb(palette.terrainEdge, spireAlpha * 0.5)
     for (let i = 0; i < 4; i++) {
@@ -259,8 +262,8 @@ export class Renderer {
       }
     }
 
-    // ── Layer 2: soft glow orbs (scroll 0.18) ──
-    const mx2   = -(cameraX * 0.18) % (this.W * 2)
+    // ── Layer 2: soft glow orbs (scroll 0.18 + speed-scaled) ──
+    const mx2   = -(cameraX * (0.18 + speedNorm * 0.012)) % (this.W * 2)
     for (let i = 0; i < 4; i++) {
       const bx  = ((mx2 + i * (this.W * 2 / 4)) % (this.W * 2) + this.W * 2) % (this.W * 2) - 60
       const by  = this.H * 0.20 + Math.sin(time * 0.22 + i * 1.4) * this.H * 0.04
@@ -273,9 +276,9 @@ export class Renderer {
       ctx.fillRect(bx - bs * 2, by - bs * 2, bs * 4, bs * 4)
     }
 
-    // ── Layer 3: floating dust (scroll 0.42) — higher levels ──
+    // ── Layer 3: floating dust (scroll 0.42 + speed-scaled) — higher levels ──
     if (colorLevel > 0.8) {
-      const mx3  = -(cameraX * 0.42) % (this.W * 1.6)
+      const mx3  = -(cameraX * (0.42 + speedNorm * 0.05)) % (this.W * 1.6)
       const da   = (colorLevel - 0.8) * 0.10
       ctx.fillStyle = rgb(palette.particleColor, da)
       for (let i = 0; i < 14; i++) {
@@ -528,11 +531,14 @@ export class Renderer {
     const sx = player.worldX - cameraX
     const sy = player.worldY - cameraY
 
-    // Landing squash detection
-    const justLandedNow = !this._wasGrounded && player.isGrounded
-    if (justLandedNow) this._squashTimer = 1.0
-    this._wasGrounded = player.isGrounded
-    this._squashTimer *= 0.58   // decay each render frame
+    // Squash / stretch — detect state transitions each render frame
+    const justLandedNow   = !this._wasGrounded && player.isGrounded
+    const justLaunchedNow = this._wasGrounded  && !player.isGrounded
+    if (justLandedNow)   this._squashTimer       = 1.0
+    if (justLaunchedNow) this._launchSquashTimer = 1.0
+    this._wasGrounded       = player.isGrounded
+    this._squashTimer      *= 0.58
+    this._launchSquashTimer = Math.max(0, this._launchSquashTimer - 0.28)
 
     ctx.save()
     ctx.translate(sx, sy)
@@ -557,10 +563,23 @@ export class Renderer {
     }
     ctx.rotate(this._smoothAngle + (player.isGrounded ? speedNorm * 0.08 : 0))
 
-    // Squash-and-stretch on landing — brief wide/flat deformation
-    if (this._squashTimer > 0.05) {
-      const sq = this._squashTimer * 0.14
-      ctx.scale(1 + sq, 1 - sq * 0.75)
+    // GDD-spec squash-stretch: landing / launch / airborne-stretch / apex float
+    if (player.isGrounded && this._squashTimer > 0.05) {
+      const sq = Math.pow(this._squashTimer, 0.85)
+      ctx.scale(1 + 0.35 * sq, 1 - 0.30 * sq)
+    } else if (!player.isGrounded) {
+      if (this._launchSquashTimer > 0) {
+        // Brief wide compress just after takeoff
+        const t = this._launchSquashTimer
+        ctx.scale(1 + 0.25 * t, 1 - 0.25 * t)
+      } else {
+        // Stretch along travel axis, ease to round float at apex
+        const stretchT  = Math.min(player.airborneFrames / 10, 1.0)
+        const apexBlend = Math.max(0, 1 - Math.abs(player.vy) / 130)
+        const sX = 1 - 0.12 * stretchT + 0.17 * apexBlend
+        const sY = 1 + 0.18 * stretchT - 0.23 * apexBlend
+        ctx.scale(sX, sY)
+      }
     }
 
     const invAlpha   = player.isInvincible ? 0.5 + Math.sin(time * 18) * 0.4 : 1.0

@@ -40,14 +40,15 @@ export class ParticleSystem {
     color: [number,number,number],
     slope: number,
     speed: number,
+    windBias = 0,
   ) {
     const intensity = Math.min((speed - 220) / 580, 1.0)
     if (intensity < 0.05) return
     const count = intensity > 0.55 ? 2 : 1
     const pts   = this.get(count)
     for (const p of pts) {
-      // spray direction: perpendicular to terrain surface, biased backward
-      const ang = slope - Math.PI / 2 + (Math.random() - 0.5) * 0.60
+      // spray direction: perpendicular to terrain surface, biased backward + wind deflection
+      const ang = slope - Math.PI / 2 + (Math.random() - 0.5) * 0.60 + windBias * 0.26
       const spd = 50 + intensity * 130 + Math.random() * 60
       p.x  = x + (Math.random() - 0.5) * 14
       p.y  = y

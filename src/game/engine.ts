@@ -14,6 +14,7 @@ const MAX_DELTA         = 0.1
 const FLOW_BURST_COMBO  = 15
 const FLOW_BURST_DUR    = 4.0
 const INTRO_DUR         = 1.6   // seconds for cinematic intro
+const JUMP_CUT_VELOCITY = 420   // px/s — max upward speed on early hold release (≈8 u/s)
 
 export type EngineEvent = 'crash' | 'perfectLanding' | 'flip' | 'archHit' | 'wellHit' | 'flowBurst'
 
@@ -51,6 +52,8 @@ export class GameEngine {
   private _jumpCooldown = 0   // brief lockout after jump (80ms)
 
   private _sandTimer    = 0   // throttle sand spray emission
+  private _wasHeld      = false  // previous frame hold state — jump cut detection
+  private _wind         = 0     // -1→+1 wind factor, slow cycle, biases sand spray
 
   // Game state
   combo        = 0
@@ -104,6 +107,13 @@ export class GameEngine {
   private _reset() {
     const startY = this.terrain.getY(200) - 40
     this.player  = createPlayer(200, startY)
+
+    // Warm-start speed from last 5 run history — experienced players pick up faster
+    const speedHist = JSON.parse(localStorage.getItem('abyss_speed_hist') ?? '[]') as number[]
+    if (speedHist.length > 0) {
+      const avg = speedHist.reduce((a, b) => a + b, 0) / speedHist.length
+      this.player.vx = Math.min(Math.max(180, avg * 0.85), 360)
+    }
     this.combo   = 0
     this.distance = 0
     this.isFlowBurst    = false
@@ -115,6 +125,7 @@ export class GameEngine {
     this._jumpBuffer    = 0
     this._jumpCooldown  = 0
     this._sandTimer     = 0
+    this._wasHeld       = false
     this.colorSystem.level    = 0
     this.colorSystem.target   = 0
     this.colorSystem.velocity = 0
@@ -198,6 +209,13 @@ export class GameEngine {
       this.jumpQueued  = false
     }
 
+    // Jump cut — clamp upward velocity on hold release mid-rise
+    const justReleased = this._wasHeld && !this.isHeld
+    if (justReleased && !this.player.isGrounded && this.player.vy < 0) {
+      this.player.vy = Math.max(this.player.vy, -JUMP_CUT_VELOCITY)
+    }
+    this._wasHeld = this.isHeld
+
     const result = stepPhysics(
       this.player, this.terrain,
       this.colorSystem.level, this.isHeld, dt
@@ -264,6 +282,7 @@ export class GameEngine {
     this.colorSystem.update(this.combo, this.player.isGrounded, dt)
     this.audio.updateAmbient(this.colorSystem.level)
     this.audio.updateSlide(this.player.isGrounded, this.player.vx)
+    this._wind = Math.sin(this.gameTime * 0.07) * 0.65
 
     // Spawn mechanics + coins
     this.mechanics.spawn(
@@ -307,6 +326,7 @@ export class GameEngine {
         this.colorSystem.palette.trailColor,
         result.slopeAngle,
         this.player.vx,
+        this._wind,
       )
     }
 
@@ -343,6 +363,12 @@ export class GameEngine {
   }
 
   private _handleCrash() {
+    // Save run-end speed for warm-start on next restart
+    const hist = JSON.parse(localStorage.getItem('abyss_speed_hist') ?? '[]') as number[]
+    hist.push(Math.round(this.player.vx))
+    if (hist.length > 5) hist.shift()
+    localStorage.setItem('abyss_speed_hist', JSON.stringify(hist))
+
     this._shake(12)
     this.audio.playCrash()
     this.particles.emit(

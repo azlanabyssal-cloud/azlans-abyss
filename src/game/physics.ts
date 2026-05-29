@@ -14,6 +14,8 @@ const ANGULAR_TORQUE     = 9.2     // rad/s² flip acceleration
 const MAX_ANGULAR_VEL    = 9.5     // rad/s — 540°/s, 1 flip ≈ 0.66s
 const TRICK_MIN_AIR_FR   = 12      // frames (200ms) before flip rotation starts
 const AIR_DRAG           = 0.9997
+const APEX_THRESHOLD     = 130     // px/s — |vy| within this = apex zone (≈2.5 u/s)
+const APEX_GRAVITY_MULT  = 0.18    // gravity fraction at dead apex — the float trick
 const LANDING_PERFECT    = 0.21    // rad — 12°, tight window for perfect
 const LANDING_SAFE       = 0.77    // rad — 44°, beyond this is a crash
 const TRAIL_MAX          = 80
@@ -98,12 +100,16 @@ export function stepPhysics(
     player.worldX += player.vx * dt
 
   } else {
-    // Variable gravity: lighter on the way up when held, snappier on the way down
-    // vy < 0 = rising (we add positive gravity, screen-Y increases downward)
-    const isRising = player.vy < 0
-    const gravMult = (isRising && isHeld) ? GRAVITY_HOLD_MULT
-                   : !isRising            ? FALL_GRAVITY_MULT
-                   :                        1.0
+    // Variable gravity: lighter on the way up when held, snappier on fall
+    // Apex hang: gravity eases to 18% near zero velocity — floats on all jump types
+    // vy < 0 = rising (screen-Y increases downward)
+    const isRising  = player.vy < 0
+    const absvY     = Math.abs(player.vy)
+    const baseMult  = (isRising && isHeld) ? GRAVITY_HOLD_MULT
+                    : !isRising            ? FALL_GRAVITY_MULT
+                    :                        1.0
+    const apexBlend = absvY < APEX_THRESHOLD ? 1 - absvY / APEX_THRESHOLD : 0
+    const gravMult  = baseMult + (APEX_GRAVITY_MULT - baseMult) * apexBlend
     player.vy += GRAVITY * gravMult * dt
     player.vx *= Math.pow(AIR_DRAG, dt * 60)
     player.worldX += player.vx * dt
