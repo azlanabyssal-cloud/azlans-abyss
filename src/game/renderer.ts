@@ -495,14 +495,22 @@ export class Renderer {
     ctx.translate(sx, sy)
     const speedNorm = Math.min((player.vx - 180) / 720, 1)
     if (!player.isGrounded) {
-      // In the air — exact tracking so backflips rotate precisely
-      this._smoothAngle = player.angle
+      if (Math.abs(player.angularVel) > 2) {
+        // active flip — exact tracking so the spin looks crisp
+        this._smoothAngle = player.angle
+      } else {
+        // airborne, not spinning — slow drift (0.08 ≈ 1.9s settle)
+        let diff = player.angle - this._smoothAngle
+        while (diff > Math.PI)  diff -= Math.PI * 2
+        while (diff < -Math.PI) diff += Math.PI * 2
+        this._smoothAngle += diff * 0.08
+      }
     } else {
-      // Grounded — shortest-path lerp so slope changes feel organic, not snappy
+      // grounded — weight-settling lerp (0.18 ≈ 0.83s settle)
       let diff = player.angle - this._smoothAngle
       while (diff > Math.PI)  diff -= Math.PI * 2
       while (diff < -Math.PI) diff += Math.PI * 2
-      this._smoothAngle += diff * 0.22
+      this._smoothAngle += diff * 0.18
     }
     ctx.rotate(this._smoothAngle + (player.isGrounded ? speedNorm * 0.08 : 0))
 

@@ -41,9 +41,14 @@ export class GameEngine {
   private gameTime = 0
 
   // Input
-  private isHeld     = false
-  private jumpQueued = false
-  private inputReady = false
+  private isHeld      = false
+  private jumpQueued  = false
+  private inputReady  = false
+
+  // Input forgiveness windows
+  private _coyoteTimer  = 0   // grace after walking off edge (120ms)
+  private _jumpBuffer   = 0   // queued jump if tapped just before landing (100ms)
+  private _jumpCooldown = 0   // brief lockout after jump (80ms)
 
   // Game state
   combo        = 0
@@ -104,6 +109,9 @@ export class GameEngine {
     this.inputReady     = false
     this.isHeld         = false
     this.jumpQueued     = false
+    this._coyoteTimer   = 0
+    this._jumpBuffer    = 0
+    this._jumpCooldown  = 0
     this.colorSystem.level    = 0
     this.colorSystem.target   = 0
     this.colorSystem.velocity = 0
@@ -156,26 +164,46 @@ export class GameEngine {
     // Enable input after grace period (after intro settles)
     if (!this.inputReady && this.gameTime > 0.4) this.inputReady = true
 
-    // Jump
-    if (this.jumpQueued && this.player.isGrounded && this.inputReady) {
+    // Tick forgiveness timers
+    if (this._coyoteTimer  > 0) this._coyoteTimer  = Math.max(0, this._coyoteTimer  - dt)
+    if (this._jumpBuffer   > 0) this._jumpBuffer   = Math.max(0, this._jumpBuffer   - dt)
+    if (this._jumpCooldown > 0) this._jumpCooldown = Math.max(0, this._jumpCooldown - dt)
+
+    const prevGrounded = this.player.isGrounded
+    const canJump = (this.player.isGrounded || this._coyoteTimer > 0) && this._jumpCooldown <= 0
+
+    // Execute jump — from direct input or from buffer
+    const doJump = (this.jumpQueued || this._jumpBuffer > 0) && canJump && this.inputReady
+    if (doJump) {
       triggerJump(this.player)
       this.audio.playJump()
-      // Jump ring at board position
       this.jumpRingTimer = 0.45
       this.jumpRingX     = this.player.worldX
       this.jumpRingY     = this.player.worldY
-      // Launch dust from board
       this.particles.emit(
         this.player.worldX, this.player.worldY,
         this.colorSystem.palette.trailColor, 6, 90, Math.PI
       )
-      this.jumpQueued = false
+      this.jumpQueued    = false
+      this._jumpBuffer   = 0
+      this._coyoteTimer  = 0
+      this._jumpCooldown = 0.08
+    }
+    // Jump pressed mid-air — store in buffer for when we land
+    if (this.jumpQueued && !canJump && this.inputReady) {
+      this._jumpBuffer = 0.10
+      this.jumpQueued  = false
     }
 
     const result = stepPhysics(
       this.player, this.terrain,
       this.colorSystem.level, this.isHeld, dt
     )
+
+    // Coyote time — walked off an edge without jumping
+    if (prevGrounded && !this.player.isGrounded && !doJump) {
+      this._coyoteTimer = 0.12
+    }
 
     if (result.crashed) { this._handleCrash(); return }
 
@@ -270,12 +298,14 @@ export class GameEngine {
     // Combo pop decay
     if (this.comboPopTimer > 0) this.comboPopTimer = Math.max(0, this.comboPopTimer - dt)
 
-    // Camera — horizontal with speed lookahead, vertical spring
-    const camSpeedNorm = Math.min((this.player.vx - 180) / 720, 1)
-    const lookahead    = camSpeedNorm * this.W * 0.09   // see further ahead at speed
-    const targetCX = this.player.worldX - this.W * 0.3 + lookahead
-    const targetCY = this.player.worldY - this.H * 0.58
-    this.cameraX   = targetCX
+    // Camera — horizontal: lerp toward lead target (0.12 factor)
+    //          vertical:   60% player + 40% terrain ahead (terrain prediction blend)
+    const camSpeedNorm  = Math.min((this.player.vx - 180) / 720, 1)
+    const lookahead     = camSpeedNorm * this.W * 0.09
+    const targetCX      = this.player.worldX - this.W * 0.35 + lookahead   // 35% from left
+    const terrainAhead  = this.terrain.getY(this.player.worldX + this.player.vx * 0.5, this.colorSystem.level)
+    const targetCY      = this.player.worldY * 0.60 + terrainAhead * 0.40 - this.H * 0.58
+    this.cameraX       += (targetCX - this.cameraX) * 0.12   // smooth lerp
 
     const springF = (targetCY - this.cameraY) * 5.0 - this.camVY * 7.0
     this.camVY   += springF * dt
@@ -359,9 +389,7 @@ export class GameEngine {
   private _bindInput(canvas: HTMLCanvasElement) {
     const onDown = () => {
       this.audio.resume()
-      if (this.inputReady && this.player.isGrounded) {
-        this.jumpQueued = true
-      }
+      if (this.inputReady) this.jumpQueued = true   // always queue; canJump check is in physics step
       this.isHeld = true
     }
     const onUp = () => { this.isHeld = false }

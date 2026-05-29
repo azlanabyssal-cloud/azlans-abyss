@@ -16,6 +16,7 @@ export interface PlayerState {
   scarfPoints: Vec2[]
   isInvincible: boolean
   invincibleTimer: number
+  airborneFrames: number
 }
 
 export interface TrailPoint {

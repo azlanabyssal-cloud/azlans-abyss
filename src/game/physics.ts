@@ -2,20 +2,23 @@ import type { PlayerState, TrailPoint } from '../types/game'
 import type { Terrain } from './terrain'
 
 // Feel over realism — tuned by hand until it clicked
-const GRAVITY         = 1480   // px/s² — lighter for flowing, Alto-style arcs
-const MIN_SPEED       = 180    // px/s — player never truly stops
-const MAX_SPEED       = 900    // px/s
-const SLOPE_FORCE     = 1400   // how strongly slope accelerates/decelerates
-const JUMP_BASE       = 740    // px/s vertical launch velocity — higher, floatier
-const JUMP_SPEED_MULT = 0.30   // faster run = higher jump
-const ANGULAR_TORQUE  = 9.2    // rad/s² per second held
-const MAX_ANGULAR_VEL = 14     // rad/s max backflip speed
-const AIR_DRAG        = 0.9997 // per frame
-const GROUND_DRAG     = 0.992  // per frame
-const LANDING_PERFECT = 0.32   // rad — angle match threshold for perfect landing
-const LANDING_SAFE    = 0.9    // rad — max safe landing angle diff
-const TRAIL_MAX       = 80     // max trail points
-const INVINCIBLE_DUR  = 0.9    // seconds after perfect landing
+const GRAVITY            = 1480    // px/s² — all other constants orbit this
+const MIN_SPEED          = 180     // px/s — player never truly stops
+const MAX_SPEED          = 900     // px/s
+const SLOPE_FORCE        = 1400    // slope acceleration/deceleration
+const JUMP_BASE          = 740     // px/s vertical launch
+const JUMP_SPEED_MULT    = 0.30    // faster run = slightly higher jump
+const GRAVITY_HOLD_MULT  = 0.55    // 45% gravity while rising + holding — the skill gap
+const FALL_GRAVITY_MULT  = 1.08    // snappier fall than rise
+const ANGULAR_TORQUE     = 9.2     // rad/s² flip acceleration
+const MAX_ANGULAR_VEL    = 9.5     // rad/s — 540°/s, 1 flip ≈ 0.66s
+const TRICK_MIN_AIR_FR   = 12      // frames (200ms) before flip rotation starts
+const AIR_DRAG           = 0.9997
+const GROUND_DRAG        = 0.992
+const LANDING_PERFECT    = 0.21    // rad — 12°, tight window for perfect
+const LANDING_SAFE       = 0.77    // rad — 44°, beyond this is a crash
+const TRAIL_MAX          = 80
+const INVINCIBLE_DUR     = 0.9
 
 export function createPlayer(startX: number, startY: number): PlayerState {
   return {
@@ -27,6 +30,7 @@ export function createPlayer(startX: number, startY: number): PlayerState {
     trailPoints: [],
     scarfPoints: [],
     isInvincible: false, invincibleTimer: 0,
+    airborneFrames: 0,
   }
 }
 
@@ -83,14 +87,21 @@ export function stepPhysics(
     player.worldX += player.vx * dt
 
   } else {
-    // Airborne physics
-    player.vy += GRAVITY * dt
+    // Variable gravity: lighter on the way up when held, snappier on the way down
+    // vy < 0 = rising (we add positive gravity, screen-Y increases downward)
+    const isRising = player.vy < 0
+    const gravMult = (isRising && isHeld) ? GRAVITY_HOLD_MULT
+                   : !isRising            ? FALL_GRAVITY_MULT
+                   :                        1.0
+    player.vy += GRAVITY * gravMult * dt
     player.vx *= Math.pow(AIR_DRAG, dt * 60)
     player.worldX += player.vx * dt
     player.worldY += player.vy * dt
 
-    // Backflip rotation when held
-    if (isHeld && player.isBackflipping) {
+    player.airborneFrames++
+
+    // Flip rotation only after minimum air time (prevents accidental trigger on tap)
+    if (isHeld && player.isBackflipping && player.airborneFrames >= TRICK_MIN_AIR_FR) {
       player.angularVel = Math.min(player.angularVel + ANGULAR_TORQUE * dt, MAX_ANGULAR_VEL)
     }
 
@@ -118,7 +129,7 @@ export function stepPhysics(
         const wasFlipping = player.flipsInAir > 0
         if (angleDiff < LANDING_PERFECT && wasFlipping) {
           perfectLanding = true
-          player.vx *= 1.18  // speed burst on clean landing
+          player.vx *= 1.12  // 12% speed reward on perfect land
           player.isInvincible = true
           player.invincibleTimer = INVINCIBLE_DUR
         }
@@ -132,6 +143,7 @@ export function stepPhysics(
         player.angle = slope
         player.flipsInAir = 0
         player.angularVel = 0
+        player.airborneFrames = 0
       }
     }
   }
@@ -156,7 +168,8 @@ export function triggerJump(player: PlayerState) {
   player.isGrounded = false
   player.isBackflipping = true
   player.flipsInAir = 0
-  player.angularVel = 3.8  // initial rotation momentum — snappier flip start
+  player.angularVel = 3.8
+  player.airborneFrames = 0   // fresh count — flip min-time starts from 0
 }
 
 function updateTrail(player: PlayerState, colorLevel: number) {
