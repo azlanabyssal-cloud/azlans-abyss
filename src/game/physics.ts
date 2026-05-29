@@ -1,7 +1,7 @@
 import type { PlayerState, TrailPoint } from '../types/game'
 import type { Terrain } from './terrain'
 
-// Tuned constants — feel > realism (directly from Alto's design philosophy)
+// Feel over realism — tuned by hand until it clicked
 const GRAVITY         = 1480   // px/s² — lighter for flowing, Alto-style arcs
 const MIN_SPEED       = 180    // px/s — player never truly stops
 const MAX_SPEED       = 900    // px/s
@@ -62,7 +62,7 @@ export function stepPhysics(
   }
 
   if (player.isGrounded) {
-    // Slope-driven acceleration (Alto's core mechanic)
+    // slope drives speed — downhill accelerates, uphill bleeds it
     player.vx += slopeR * SLOPE_FORCE * dt
     player.vx = Math.max(MIN_SPEED, Math.min(MAX_SPEED, player.vx))
     player.vx *= Math.pow(GROUND_DRAG, dt * 60)
@@ -118,12 +118,12 @@ export function stepPhysics(
         const wasFlipping = player.flipsInAir > 0
         if (angleDiff < LANDING_PERFECT && wasFlipping) {
           perfectLanding = true
-          player.vx *= 1.18  // Alto's speed burst on perfect landing
+          player.vx *= 1.18  // speed burst on clean landing
           player.isInvincible = true
           player.invincibleTimer = INVINCIBLE_DUR
         }
 
-        // Alto's velocity preservation — never kill forward momentum on landing
+        // keep forward speed — killing momentum on landing feels awful
         justLanded = true
         player.isGrounded = true
         player.isBackflipping = false

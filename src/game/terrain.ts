@@ -13,7 +13,7 @@ export class Terrain {
     this.frequency = 0.0018
   }
 
-  // Returns terrain y in canvas space. colorLevel smooths terrain (Alto: slopes are physics)
+  // terrain y at worldX — higher color level gives a smoother ride
   getY(worldX: number, colorLevel = 0): number {
     const smoothing = 1 - colorLevel * 0.12  // higher color = smoother world
     const amp = this.amplitude * smoothing

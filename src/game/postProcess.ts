@@ -1,6 +1,5 @@
-// WebGL paper grain + bloom overlay — Gris's "living painting" technique.
-// Runs as a full-screen quad on a transparent WebGL canvas layered above the game canvas.
-// Grain offsets cycle randomly each frame so the human eye perceives a tactile, breathing canvas.
+// WebGL grain overlay — full-screen quad on a transparent canvas stacked above the game canvas.
+// Grain seed shifts each frame so the texture feels alive rather than frozen.
 
 const VERT_SRC = `
   attribute vec2 a_pos;

@@ -101,7 +101,7 @@ export class AudioEngine {
     src.stop(t + dur + 0.05)
   }
 
-  // Echo tail — creates spatial reverb feel by duplicating signal with delay+attenuation
+  // Echo tail — repeated decaying copies give cheap but effective reverb
   private _echo(
     type: OscillatorType,
     freq: number,
@@ -155,7 +155,7 @@ export class AudioEngine {
 
   // ─── gameplay sounds ────────────────────────────────────────────────────
 
-  // Jump — ascending whoosh. This IS the "click feel" on tap.
+  // Jump — quick ascending whoosh, the whole satisfying feel of the tap
   playJump() {
     if (!this.ctx) return
     // Fast ascending sine: low to mid
@@ -221,7 +221,7 @@ export class AudioEngine {
     this._noise(0.10, 0.45, 200)
   }
 
-  // Ambient pad volume + pitch rises as world blooms
+  // ambient volume + pitch track color level
   updateAmbient(colorLevel: number) {
     if (!this.ambGain || !this.ctx) return
     const t   = this.ctx.currentTime

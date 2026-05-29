@@ -68,7 +68,7 @@ export class Renderer {
     time: number,
     isFlowBurst: boolean,
   ) {
-    // Sky gradient — extends full height so horizon color always reads below terrain edge
+    // sky gradient — full height so the horizon colour shows below the terrain
     const grad = ctx.createLinearGradient(0, 0, 0, this.H)
     grad.addColorStop(0,    rgb(palette.skyTop))
     grad.addColorStop(0.55, rgb(palette.skyBot))
@@ -76,14 +76,14 @@ export class Renderer {
     ctx.fillStyle = grad
     ctx.fillRect(0, 0, this.W, this.H)
 
-    // Horizon atmospheric warmth — always present
+    // horizon haze
     const haze = ctx.createLinearGradient(0, this.H * 0.40, 0, this.H * 0.72)
     haze.addColorStop(0, rgb(palette.terrainEdge, 0))
     haze.addColorStop(1, rgb(palette.terrainEdge, 0.055 + colorLevel * 0.045))
     ctx.fillStyle = haze
     ctx.fillRect(0, this.H * 0.40, this.W, this.H * 0.32)
 
-    // Nebula / cloud wisps — appear from SPARK level onward
+    // cloud wisps at higher color levels
     if (colorLevel > 0.5) {
       const nc = ctx.createLinearGradient(0, this.H * 0.12, 0, this.H * 0.38)
       nc.addColorStop(0, 'rgba(0,0,0,0)')
@@ -104,7 +104,7 @@ export class Renderer {
       }
     }
 
-    // Stars — proper round dots, flicker, fade with color level
+    // stars — fade out as color level rises
     const starCount = Math.max(0, Math.floor(80 * (1 - colorLevel / 3.5)))
     ctx.fillStyle   = `rgb(${palette.playerColor[0]},${palette.playerColor[1]},${palette.playerColor[2]})`
     for (let i = 0; i < starCount; i++) {
@@ -184,8 +184,7 @@ export class Renderer {
     cameraX: number,
     time: number,
   ) {
-    // ── Layer 0: ancient spires (very distant, scroll 0.04) ──
-    // These landmark structures give the world a sense of ancient scale
+    // ── Layer 0: distant spires (scroll 0.04) ──
     const spireOff = -(cameraX * 0.04) % (this.W * 2)
     const spireAlpha = 0.18 + colorLevel * 0.08
     ctx.fillStyle = rgb(palette.terrainEdge, spireAlpha * 0.5)
@@ -219,7 +218,7 @@ export class Renderer {
     const mxRaw = (cameraX * 0.08) % this.W
     const mxOff = -mxRaw
 
-    // Mountains: distinctly lighter than sky — strong enough to always read as a layer
+    // mountains slightly lighter than sky so they always read as a separate layer
     const mR = Math.min(255, palette.skyBot[0] + 32)
     const mG = Math.min(255, palette.skyBot[1] + 20)
     const mB = Math.min(255, palette.skyBot[2] + 52)
@@ -304,8 +303,7 @@ export class Renderer {
     const toWX   = cameraX + this.W + step
     const points = terrain.sample(fromWX, toWX, step, colorLevel)
 
-    // ── Smooth terrain surface path (quadratic midpoint — zero visible kinks) ──
-    // Used for both fill and edge strokes
+    // smooth terrain path — quadratic midpoints, reused for fill and edge
     const px0 = points[0][0] - cameraX
     const py0 = points[0][1] - cameraY
     const pxL = points[points.length - 1][0] - cameraX
@@ -347,10 +345,10 @@ export class Renderer {
     ctx.lineJoin = 'round'
     ctx.lineCap  = 'round'
 
-    // Breathing glow — pulse gives the world a heartbeat
+    // slow pulse on the edge glow
     const breathe = Math.sin(time * 1.2) * (0.8 + colorLevel * 0.6)
 
-    // Outer bloom — clearly visible even at BLANK level
+    // outer bloom
     ctx.strokeStyle = rgb(palette.terrainEdge, 0.22 + colorLevel * 0.09)
     ctx.lineWidth   = 28 + colorLevel * 8 + breathe
     ctx.stroke()
@@ -518,7 +516,7 @@ export class Renderer {
     const airborne   = !player.isGrounded
     const spinning   = Math.abs(player.angularVel) > 4
 
-    // ── Ambient glow aura — no shadowBlur (GPU flush), manual radial instead ──
+    // manual radial aura — shadowBlur tanks performance so skip it
     const auraR = 38 + colorLevel * 12 + (isFlowBurst ? 22 : 0)
     const auraA = 0.07 + colorLevel * 0.07 + (isFlowBurst ? 0.16 : 0)
     const aura  = ctx.createRadialGradient(0, -6, 0, 0, -6, auraR)

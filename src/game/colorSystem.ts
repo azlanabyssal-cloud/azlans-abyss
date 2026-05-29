@@ -1,13 +1,12 @@
 import type { ColorPalette } from '../types/game'
 
-// Five emotional states — Blank → Spark → Flow → Blaze → Aurora
-// Each is an RGB triplet for smooth interpolation
+// Five color states — Blank → Spark → Flow → Blaze → Aurora
 const PALETTES: ColorPalette[] = [
-  { // 0: BLANK — deep indigo void. Sky is a real visible gradient, terrain is darkness below.
-    skyTop:       [14,  9,  42],   // deep indigo — not black
-    skyBot:       [72,  48, 145],  // rich purple horizon — clearly visible
-    terrainFill:  [5,   4,  14],   // near-black — creates strong contrast against sky
-    terrainEdge:  [148, 118,245],  // bright violet glow
+  { // 0: BLANK — deep indigo void
+    skyTop:       [14,  9,  42],
+    skyBot:       [72,  48, 145],
+    terrainFill:  [5,   4,  14],
+    terrainEdge:  [148, 118,245],
     playerColor:  [225, 218, 255],
     trailColor:   [165, 142, 245],
     archColor:    [105, 85, 188],
@@ -113,7 +112,7 @@ export class ColorSystem {
     else if (combo >= 1)  this.target = 1
     else                  this.target = Math.max(0, this.target - dt * 0.35)
 
-    // Spring-damper towards target — smooth and organic transitions
+    // spring-damper so level changes feel smooth, not snappy
     const spring = 4.5
     const damp   = 7.0
     const force  = (this.target - this.level) * spring - this.velocity * damp
@@ -124,6 +123,6 @@ export class ColorSystem {
 
   get palette(): ColorPalette { return getPalette(this.level) }
 
-  // Normalized 0–1 within current level band — for pulsing effects
+  // 0–1 within the current level band, useful for pulse effects
   get phase(): number { return this.level % 1 }
 }
